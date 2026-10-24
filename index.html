@@ -5630,7 +5630,7 @@ function __runOnPort(o,port,mode){
   return new Promise((resolve,reject)=>{
     let finished=false; const t0=performance.now();
     const done=(ok,val)=>{ if(finished) return; finished=true; clearTimeout(timer); if(ok) resolve(val); else reject(val); };
-    const timer=setTimeout(()=>done(false,new Error(mode+' search timeout')), Math.max(1000,(isFinite(o.timeLimit)?o.timeLimit:5000)+(o.graceMs||1000)));
+    const timer=setTimeout(()=>done(false,new Error(mode+' search timeout')), Math.max(1000,(isFinite(o.timeLimit)?o.timeLimit:600000)+(o.graceMs||1000)));
     const emit=(d,fin)=>{ try{ if(o.onProgress) o.onProgress({best:d.best,depth:d.depth,nodes:d.nodes,nps:d.nps,score:(d.score!=null?d.score:0),isFinal:fin,isSolver:!!o.solver,ttSize:d.ttSize,killerHits:d.killerHits,mode}); }catch(e){} };
     port.onmessage=(e)=>{
       if(o.cancelled&&o.cancelled()) return;
@@ -5655,7 +5655,7 @@ async function routeSearch(o){
   try{ document.getElementById('d-wsup').textContent=hasWorker?(meta?'yes-meta-blocked':'yes'):'no'; }catch(e){}
   if(!hasWorker){ o.why='Worker API無し'; return __mainSearch(o); }
   o.why=meta?'Worker=省略(Meta/ブロック判定)':'';
-  for(const route of (['worker','aw'])){ // ULTIMATE FIX: always try worker first
+  for(const route of (location.hostname.includes('github.io')?['worker']:['aw'])){ // NO-FALLBACK FIX: github.ioはworkerのみ、metaはawのみで転落無し
     if(cancelled()) throw new Error('cancelled');
     if(route==='worker'){
       let w=null;
@@ -5719,7 +5719,7 @@ function runAI(isHint, cb){
     const gen=aiGen;
     const bankNow=(turn==='black'?timeBankB:timeBankW);
     routeSearch({P,O,depth:maxDepth,timeLimit,engine:eng,selfPct:empty<=18?100:selfPct,oppPct:empty<=18?100:oppPct,
-      graceMs:bankNow<=0?1000:4000,cancelled:()=>gen!==aiGen,onProgress:cb,solver:solverOn,abortOnPause:true
+      graceMs:bankNow<=0?1000:120000,cancelled:()=>gen!==aiGen,onProgress:cb,solver:solverOn,abortOnPause:true
     }).then(r=>resolve(r.move)).catch(e=>{ if(e&&e.message==='cancelled') return; reject(e); });
   });
 }
@@ -6288,7 +6288,7 @@ async function runBattleAIWorker(P,O,depth,timeLimit,onProgress){
   if(isPaused) return {move:-1,score:0,depth:0,nodes:0};
   const eng=(globalThis.currentEngine)||((battleTurnBlack?document.getElementById('battle-black-engine'):document.getElementById('battle-white-engine'))||{}).value||'ml';
   return routeSearch({P,O,depth,timeLimit:isFinite(timeLimit)?timeLimit*1000:Infinity,engine:eng,selfPct:100,oppPct:100,
-    graceMs:8000,cancelled:()=>false,onProgress:(info)=>{ if(onProgress) onProgress(info); }});
+    graceMs:120000,cancelled:()=>false,onProgress:(info)=>{ if(onProgress) onProgress(info); }});
 }
 
 // (removed: unified into __mainSearch)
