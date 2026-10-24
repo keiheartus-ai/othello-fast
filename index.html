@@ -5578,8 +5578,15 @@ function __isMetaEnv(){
   try{
     const href = (location.href||'').toLowerCase();
     const host = (location.hostname||'').toLowerCase();
+    const ref = (document.referrer||'').toLowerCase();
     const isSrcDoc = href.includes('about:srcdoc') || href.includes('about:blank');
-    // FIX: GitHub PagesではWORKERを使うため hostとsrcDocのみで判定。ref/inIframe/blob判定を削除。手ログ欄はそのまま保持
+    const isBlob = href.includes('blob:');
+    // DEBUG: GitHub Pagesでは必ずfalseを返す。host/href/refをログ
+    try{
+      const dbg = 'DEBUG __isMetaEnv host:'+host+' href:'+href.slice(0,80)+' ref:'+ref.slice(0,80)+' isSrcDoc:'+isSrcDoc+' isBlob:'+isBlob;
+      if(typeof logErr==='function') logErr(dbg); else console.log(dbg);
+    }catch(e){}
+    // FIX: GitHub PagesではWORKERを使う。meta判定はhostにmeta.ai/metaaiusが含まれるか、srcDocかのみ。ref/blob/inIframeは無視
     return host.includes('metaaius')||host.includes('meta.ai')||isSrcDoc;
   }catch(e){ return false; }
 }
@@ -5661,6 +5668,7 @@ async function routeSearch(o){
   try{ document.getElementById('d-wsup').textContent=hasWorker?(meta?'yes-meta-blocked':'yes'):'no'; }catch(e){}
   if(!hasWorker){ o.why='Worker API無し'; return __mainSearch(o); }
   o.why=meta?'Worker=省略(Meta/ブロック判定)':'';
+  try{ logErr('ROUTE DEBUG meta:'+meta+' hasWorker:'+hasWorker+' routes:'+(meta?['aw']:['worker','aw']).join(',')+' host:'+location.hostname); }catch(e){}
   for(const route of (meta?['aw']:['worker','aw'])){
     if(cancelled()) throw new Error('cancelled');
     if(route==='worker'){
