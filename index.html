@@ -5574,7 +5574,6 @@ function updateBankInfo(){
 // ===== Unified search router: shared by AI-vs-AI / normal play (runAI) and 10-game battle =====
 // route order: Meta AI env -> AudioWorklet ; other env -> Worker -> AudioWorklet ; last resort -> __mainSearch(o)
 function __isMetaEnv(){
-  // ULTIMATE FIX: GitHub Pagesで必ずWORKERになるよう常にfalse。手ログ欄は保持
   return false;
 }
 async function __makeAWNode(pc){
@@ -5655,7 +5654,8 @@ async function routeSearch(o){
   try{ document.getElementById('d-wsup').textContent=hasWorker?(meta?'yes-meta-blocked':'yes'):'no'; }catch(e){}
   if(!hasWorker){ o.why='Worker API無し'; return __mainSearch(o); }
   o.why=meta?'Worker=省略(Meta/ブロック判定)':'';
-  for(const route of (location.hostname.includes('github.io')?['worker']:['aw'])){ // NO-FALLBACK FIX: github.ioはworkerのみ、metaはawのみで転落無し
+  let __workerLocked = window.__workerLocked || false;
+for(const route of (__workerLocked?['worker']:['worker','aw'])){ // STICKY FIX: 一度Worker成功したらworker固定で転落なし
     if(cancelled()) throw new Error('cancelled');
     if(route==='worker'){
       let w=null;
@@ -5666,6 +5666,7 @@ async function routeSearch(o){
         worker=w;
         const r=await __runOnPort(o,w,'WORKER');
         try{w.terminate();}catch(e){} if(worker===w) worker=null;
+        window.__workerLocked=true; __workerLocked=true;
         return r;
       }catch(e){
         if(w){ try{w.terminate();}catch(_){} if(worker===w) worker=null; }
