@@ -5574,7 +5574,13 @@ function updateBankInfo(){
 // ===== Unified search router: shared by AI-vs-AI / normal play (runAI) and 10-game battle =====
 // route order: Meta AI env -> AudioWorklet ; other env -> Worker -> AudioWorklet ; last resort -> __mainSearch(o)
 function __isMetaEnv(){
-  return false;
+  try{
+    const h=location.hostname||'';
+    const href=location.href||'';
+    if(h.includes('metaaius')||h.includes('meta.ai')||href.includes('meta.ai')||href.includes('metaaius')) return true;
+    
+    return false;
+  }catch(e){ return false; }
 }
 async function __makeAWNode(pc){
   try{ return new AudioWorkletNode(pc,'othello-processor'); }
@@ -5629,7 +5635,7 @@ function __runOnPort(o,port,mode){
   return new Promise((resolve,reject)=>{
     let finished=false; const t0=performance.now();
     const done=(ok,val)=>{ if(finished) return; finished=true; clearTimeout(timer); if(ok) resolve(val); else reject(val); };
-    const timer=setTimeout(()=>done(false,new Error(mode+' search timeout')), Math.max(1000,(isFinite(o.timeLimit)?o.timeLimit:600000)+(o.graceMs||1000)));
+    const timer=setTimeout(()=>done(false,new Error(mode+' search timeout')), Math.max(1000,(isFinite(o.timeLimit)?o.timeLimit:600000)+(o.graceMs||15000)));
     const emit=(d,fin)=>{ try{ if(o.onProgress) o.onProgress({best:d.best,depth:d.depth,nodes:d.nodes,nps:d.nps,score:(d.score!=null?d.score:0),isFinal:fin,isSolver:!!o.solver,ttSize:d.ttSize,killerHits:d.killerHits,mode}); }catch(e){} };
     port.onmessage=(e)=>{
       if(o.cancelled&&o.cancelled()) return;
@@ -5654,8 +5660,12 @@ async function routeSearch(o){
   try{ document.getElementById('d-wsup').textContent=hasWorker?(meta?'yes-meta-blocked':'yes'):'no'; }catch(e){}
   if(!hasWorker){ o.why='Worker API無し'; return __mainSearch(o); }
   o.why=meta?'Worker=省略(Meta/ブロック判定)':'';
-  let __workerLocked = window.__workerLocked || false;
-for(const route of (__workerLocked?['worker']:['worker','aw'])){ // STICKY FIX: 一度Worker成功したらworker固定で転落なし
+  // 提案反映: 最後に成功した経路を先頭にする
+let __lastSuccess = window.__lastSuccess || null; if(!__lastSuccess){ try{ __lastSuccess=localStorage.getItem('__othello_last_success')||null; }catch(e){} } // 'WORKER' or 'AUDIO_WORKLET'
+let __routes;
+if(__lastSuccess==='AUDIO_WORKLET'){ __routes=['aw','worker']; }
+else { __routes=['worker','aw']; } // 初回もGitHubはworker優先、Metaは失敗後aw優先になる
+for(const route of __routes){ // 最終成功経路優先、もう一方は予備
     if(cancelled()) throw new Error('cancelled');
     if(route==='worker'){
       let w=null;
@@ -5666,12 +5676,11 @@ for(const route of (__workerLocked?['worker']:['worker','aw'])){ // STICKY FIX: 
         worker=w;
         const r=await __runOnPort(o,w,'WORKER');
         try{w.terminate();}catch(e){} if(worker===w) worker=null;
-        window.__workerLocked=true; __workerLocked=true;
+        window.__lastSuccess='WORKER'; try{localStorage.setItem('__othello_last_success','WORKER');}catch(e){}
         return r;
       }catch(e){
         if(w){ try{w.terminate();}catch(_){} if(worker===w) worker=null; }
         if(cancelled()||(e&&e.message==='cancelled')) throw new Error('cancelled');
-        if(/all worker urls failed|onerror/i.test(String(e&&e.message))) // window.__workerBlocked disabled
         o.why=(o.why?o.why+' / ':'')+'Worker: '+(e&&e.message); logErr('Worker route failed: '+(e&&e.message)+' -> next route');
       }
     }else{
@@ -5680,7 +5689,7 @@ for(const route of (__workerLocked?['worker']:['worker','aw'])){ // STICKY FIX: 
         setMode(meta?'Meta AI: AudioWorklet':'Trying AudioWorklet...');
         aw=await __getAWPort();
         if(cancelled()) throw new Error('cancelled');
-        return await __runOnPort(o,aw,'AUDIO_WORKLET');
+        const _r=await __runOnPort(o,aw,'AUDIO_WORKLET'); window.__lastSuccess='AUDIO_WORKLET'; try{localStorage.setItem('__othello_last_success','AUDIO_WORKLET');}catch(e){} return _r;
       }catch(e){
         if(aw){ try{aw.terminate();}catch(_){} if(audioWorkletWorkerInstance===aw) audioWorkletWorkerInstance=null; }
         if(cancelled()||(e&&e.message==='cancelled')) throw new Error('cancelled');
@@ -5720,7 +5729,7 @@ function runAI(isHint, cb){
     const gen=aiGen;
     const bankNow=(turn==='black'?timeBankB:timeBankW);
     routeSearch({P,O,depth:maxDepth,timeLimit,engine:eng,selfPct:empty<=18?100:selfPct,oppPct:empty<=18?100:oppPct,
-      graceMs:bankNow<=0?1000:120000,cancelled:()=>gen!==aiGen,onProgress:cb,solver:solverOn,abortOnPause:true
+      graceMs:bankNow<=0?1000:15000,cancelled:()=>gen!==aiGen,onProgress:cb,solver:solverOn,abortOnPause:true
     }).then(r=>resolve(r.move)).catch(e=>{ if(e&&e.message==='cancelled') return; reject(e); });
   });
 }
@@ -6289,7 +6298,7 @@ async function runBattleAIWorker(P,O,depth,timeLimit,onProgress){
   if(isPaused) return {move:-1,score:0,depth:0,nodes:0};
   const eng=(globalThis.currentEngine)||((battleTurnBlack?document.getElementById('battle-black-engine'):document.getElementById('battle-white-engine'))||{}).value||'ml';
   return routeSearch({P,O,depth,timeLimit:isFinite(timeLimit)?timeLimit*1000:Infinity,engine:eng,selfPct:100,oppPct:100,
-    graceMs:120000,cancelled:()=>false,onProgress:(info)=>{ if(onProgress) onProgress(info); }});
+    graceMs:15000,cancelled:()=>false,onProgress:(info)=>{ if(onProgress) onProgress(info); }});
 }
 
 // (removed: unified into __mainSearch)
