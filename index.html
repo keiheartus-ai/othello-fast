@@ -6012,10 +6012,12 @@ async function playOneBattleGame(gameId, blackEngine, whiteEngine, depth, timeLi
   try{ render(); }catch(e){}
   return new Promise(async (resolve)=>{
     logErr('playOneBattleGame: Promise started, calling battleProcess');
+    let __pauseLogged=false;
     async function battleProcess(){
-      logErr('battleProcess called Phase8 battleBoard正, battleRunning:'+battleRunning+' moves:'+battleHist.length+' turnBlack:'+turnBlack+' isPaused:'+isPaused);
+      if(!(isPaused&&__pauseLogged)) logErr('battleProcess called Phase8 battleBoard正, battleRunning:'+battleRunning+' moves:'+battleHist.length+' turnBlack:'+turnBlack+' isPaused:'+isPaused);
       if(!battleRunning){ logErr('battleProcess: not running, resolve null'); resolve(null); return; }
-      if(isPaused){ logErr('battleProcess: paused, waiting...'); setTimeout(battleProcess, 200); return; }
+      if(isPaused){ if(!__pauseLogged){ __pauseLogged=true; logErr('battleProcess: paused, waiting...'); } setTimeout(battleProcess, 200); return; }
+      if(__pauseLogged){ __pauseLogged=false; logErr('battleProcess: resumed'); }
       const myC = turnBlack?1:2;
       const oppC = myC===1?2:1;
       const legalList = getLegalMovesArray(battleBoard, myC);
